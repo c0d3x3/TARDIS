@@ -10,6 +10,8 @@ export type ViewTab =
 
 export type DuplicateConfidence = "EXACT" | "PROBABLE" | "POSSIBLE";
 
+export type DataOrigin = "live_verified" | "user_baseline" | "unavailable" | "demo_sample";
+
 export interface FileMetadata {
   path: string;
   sizeBytes: number;
@@ -30,6 +32,7 @@ export interface DuplicateItem {
   fileB: FileMetadata;
   status: "pending" | "resolved_kept_both" | "resolved_deleted_a" | "resolved_deleted_b";
   resolutionNote?: string;
+  isDemo?: boolean;
 }
 
 export interface DriveInfo {
@@ -56,19 +59,29 @@ export interface TdarrNode {
   status: string;
 }
 
-export interface HistoricalSyncStats {
-  lastSyncTime: string;
-  status: string;
+export interface UserBaselineStats {
+  enabled: boolean;
   totalProcessedFiles: number;
-  successFiles: number;
-  notRequiredFiles: number;
-  failedFiles: number;
   queuedFiles: number;
-  totalOriginalSizeBytes: number;
-  totalResultingSizeBytes: number;
-  totalSpaceSavedBytes: number;
-  percentageReduction: number;
+  notes: string;
+  lastUpdated: string;
+}
+
+export interface HistoricalSyncStats {
+  lastSyncTime: string | null;
+  status: "never_synced" | "synchronized" | "failed" | "unreachable";
+  isLiveVerified: boolean;
+  totalProcessedFiles: number | null;
+  successFiles: number | null;
+  notRequiredFiles: number | null;
+  failedFiles: number | null;
+  queuedFiles: number | null;
+  totalOriginalSizeBytes: number | null;
+  totalResultingSizeBytes: number | null;
+  totalSpaceSavedBytes: number | null;
+  percentageReduction: number | null;
   nodes: TdarrNode[];
+  errorMessage?: string;
 }
 
 export interface DriveUsageSnapshot {
@@ -120,9 +133,20 @@ export interface TardisSettings {
   libraries: LibraryInfo[];
 }
 
+export interface ConnectionStatusInfo {
+  connected: boolean;
+  lastChecked: string | null;
+  tdarrVersion?: string;
+  serverAddress: string;
+  message: string;
+  statusCode?: number;
+}
+
 export interface TardisDatabaseState {
   settings: TardisSettings;
+  userBaseline: UserBaselineStats;
   historicalSync: HistoricalSyncStats;
+  connectionStatus: ConnectionStatusInfo;
   sessions: SessionRecord[];
   duplicates: DuplicateItem[];
   discordLogs: DiscordLog[];

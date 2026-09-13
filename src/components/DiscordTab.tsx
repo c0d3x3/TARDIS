@@ -8,10 +8,11 @@ import {
   ExternalLink,
   MessageSquare,
   Clock,
-  Sparkles
+  Sparkles,
+  Info
 } from "lucide-react";
 import { TardisDatabaseState } from "../types";
-import { formatDate } from "../utils";
+import { formatDate, formatBytes } from "../utils";
 
 interface DiscordTabProps {
   data: TardisDatabaseState;
@@ -19,12 +20,12 @@ interface DiscordTabProps {
 }
 
 export const DiscordTab: React.FC<DiscordTabProps> = ({ data, onUpdateSettings }) => {
-  const { settings, discordLogs } = data;
+  const { settings, discordLogs, historicalSync, duplicates } = data;
   const [webhookUrl, setWebhookUrl] = useState(settings.discordWebhookUrl);
   const [notifyOnComplete, setNotifyOnComplete] = useState(settings.discordNotifyOnComplete);
   const [notifyOnError, setNotifyOnError] = useState(settings.discordNotifyOnError);
   const [notifyOnDuplicates, setNotifyOnDuplicates] = useState(settings.discordNotifyOnDuplicates);
-  
+
   const [isSending, setIsSending] = useState(false);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
 
@@ -35,7 +36,7 @@ export const DiscordTab: React.FC<DiscordTabProps> = ({ data, onUpdateSettings }
       discordNotifyOnError: notifyOnError,
       discordNotifyOnDuplicates: notifyOnDuplicates
     });
-    setTestResult({ success: true, message: "Discord settings saved locally." });
+    setTestResult({ success: true, message: "Discord settings saved locally in SQLite." });
   };
 
   const handleSendTest = async (type: "test" | "session_completed" | "error" | "duplicate_scan") => {
@@ -101,7 +102,7 @@ export const DiscordTab: React.FC<DiscordTabProps> = ({ data, onUpdateSettings }
             <MessageSquare className="w-4 h-4 text-purple-400" />
             <span>Webhook URL &amp; Delivery Rules</span>
           </h2>
-          <span className="text-xs text-slate-400">
+          <span className="text-xs font-mono text-slate-400">
             {webhookUrl ? "Configured" : "Disabled (Optional)"}
           </span>
         </div>
@@ -182,9 +183,9 @@ export const DiscordTab: React.FC<DiscordTabProps> = ({ data, onUpdateSettings }
       <div className="p-5 rounded-xl bg-slate-900/90 border border-slate-800 space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-semibold text-slate-200">
-            Notification Format &amp; Instant Webhook Test
+            Notification Format &amp; Embed Preview
           </h2>
-          <span className="text-xs text-slate-400 font-mono">Real Discord Embed Preview</span>
+          <span className="text-xs text-slate-400 font-mono">Real Discord Webhook Payloads</span>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -194,14 +195,12 @@ export const DiscordTab: React.FC<DiscordTabProps> = ({ data, onUpdateSettings }
               <span>🟢 TARDIS: Tdarr session completed</span>
             </div>
             <div className="text-slate-300 space-y-1 text-[11px]">
-              <div>Files processed: 1,842</div>
-              <div>Successful: 1,731</div>
-              <div>Skipped: 99</div>
-              <div>Failed: 12</div>
+              <div>Files processed: {historicalSync.isLiveVerified && historicalSync.totalProcessedFiles !== null ? historicalSync.totalProcessedFiles : "[Count]"}</div>
+              <div>Space saved: {historicalSync.isLiveVerified && historicalSync.totalSpaceSavedBytes !== null ? formatBytes(historicalSync.totalSpaceSavedBytes, 2) : "[Reclaimed GB]"}</div>
+              <div>Drives monitored: D:\, E:\</div>
               <div className="text-emerald-400 pt-1 font-semibold">
-                Space saved: 340.7 GB (38.4%)
+                Status: Completed successfully
               </div>
-              <div>Duration: 16h 27m</div>
             </div>
             <button
               id="test-webhook-session-btn"
@@ -219,9 +218,9 @@ export const DiscordTab: React.FC<DiscordTabProps> = ({ data, onUpdateSettings }
               <span>🔴 TARDIS: Tdarr processing errors</span>
             </div>
             <div className="text-slate-300 space-y-1 text-[11px]">
-              <div className="text-rose-300 font-bold">12 files failed.</div>
-              <div>Library: Movies (HD 1080p)</div>
-              <div>Node: Server-Master-RTX3060</div>
+              <div className="text-rose-300 font-bold">Transcode failure detected</div>
+              <div>Libraries: {settings.libraries.map(l => l.name).join(", ") || "Active Libraries"}</div>
+              <div>Error code: Handbrake/FFmpeg non-zero exit</div>
               <div className="text-slate-400 pt-1">Open TARDIS for details.</div>
             </div>
             <button
@@ -240,9 +239,9 @@ export const DiscordTab: React.FC<DiscordTabProps> = ({ data, onUpdateSettings }
               <span>🟡 TARDIS: Duplicate scan completed</span>
             </div>
             <div className="text-slate-300 space-y-1 text-[11px]">
-              <div>Exact duplicates: 8</div>
-              <div>Probable duplicates: 19</div>
-              <div>Possible duplicates: 10</div>
+              <div>Total candidates: {duplicates.length}</div>
+              <div>Exact duplicates: {duplicates.filter(d => d.confidence === "EXACT").length}</div>
+              <div>Probable: {duplicates.filter(d => d.confidence === "PROBABLE").length}</div>
               <div className="text-amber-300 pt-1">No files were deleted automatically.</div>
             </div>
             <button
@@ -260,22 +259,28 @@ export const DiscordTab: React.FC<DiscordTabProps> = ({ data, onUpdateSettings }
       {/* Dispatch History Log */}
       <div className="p-5 rounded-xl bg-slate-900/90 border border-slate-800 space-y-3">
         <h2 className="text-sm font-semibold text-slate-200">Recent Webhook Deliveries</h2>
-        <div className="space-y-2">
-          {discordLogs.map((log) => (
-            <div
-              key={log.id}
-              className="p-3 rounded-lg bg-slate-950/70 border border-slate-800 flex items-center justify-between text-xs font-mono"
-            >
-              <div>
-                <span className="font-semibold text-slate-200">{log.title}</span>
-                <span className="text-slate-400 text-[11px] block">{formatDate(log.timestamp)}</span>
+        {discordLogs.length > 0 ? (
+          <div className="space-y-2">
+            {discordLogs.map((log) => (
+              <div
+                key={log.id}
+                className="p-3 rounded-lg bg-slate-950/70 border border-slate-800 flex items-center justify-between text-xs font-mono"
+              >
+                <div>
+                  <span className="font-semibold text-slate-200">{log.title}</span>
+                  <span className="text-slate-400 text-[11px] block">{formatDate(log.timestamp)}</span>
+                </div>
+                <span className="px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-800 text-[10px]">
+                  {log.status}
+                </span>
               </div>
-              <span className="px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-800 text-[10px]">
-                {log.status}
-              </span>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        ) : (
+          <div className="p-8 text-center text-xs text-slate-500 rounded-lg bg-slate-950/40 border border-dashed border-slate-800">
+            No webhook deliveries logged yet. Test your webhook or wait for transcode events.
+          </div>
+        )}
       </div>
     </div>
   );

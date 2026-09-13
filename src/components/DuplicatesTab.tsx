@@ -22,13 +22,17 @@ interface DuplicatesTabProps {
   onDuplicateAction: (dupId: string, action: string) => Promise<void>;
   onTriggerScan: (libraryIds: string[], scanMode: string) => Promise<void>;
   isScanning: boolean;
+  onLoadSampleDuplicates?: () => Promise<void>;
+  onClearSampleDuplicates?: () => Promise<void>;
 }
 
 export const DuplicatesTab: React.FC<DuplicatesTabProps> = ({
   data,
   onDuplicateAction,
   onTriggerScan,
-  isScanning
+  isScanning,
+  onLoadSampleDuplicates,
+  onClearSampleDuplicates
 }) => {
   const { duplicates, settings } = data;
   const [selectedConfidence, setSelectedConfidence] = useState<string>("ALL");
@@ -38,6 +42,8 @@ export const DuplicatesTab: React.FC<DuplicatesTabProps> = ({
     target: "a" | "b";
   } | null>(null);
   const [actionProcessing, setActionProcessing] = useState(false);
+
+  const hasDemoItems = duplicates.some((d) => d.isDemo);
 
   const filteredDuplicates = duplicates.filter((d) => {
     if (selectedConfidence === "ALL") return true;
@@ -84,6 +90,22 @@ export const DuplicatesTab: React.FC<DuplicatesTabProps> = ({
         </div>
 
         <div className="flex items-center gap-2">
+          {hasDemoItems ? (
+            <button
+              onClick={() => onClearSampleDuplicates?.()}
+              className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium border border-slate-700 transition-all"
+            >
+              Clear Sample Candidates
+            </button>
+          ) : (
+            <button
+              onClick={() => onLoadSampleDuplicates?.()}
+              className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-300 text-xs font-medium border border-slate-700 transition-all"
+            >
+              Load Sample Candidates (Preview UI)
+            </button>
+          )}
+
           <button
             id="duplicates-scan-btn"
             onClick={() => onTriggerScan(["all"], "all_levels")}
@@ -95,6 +117,23 @@ export const DuplicatesTab: React.FC<DuplicatesTabProps> = ({
           </button>
         </div>
       </div>
+
+      {hasDemoItems && (
+        <div className="p-3 rounded-lg bg-purple-950/40 border border-purple-800/60 text-xs text-purple-200 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Info className="w-4 h-4 text-purple-400 shrink-0" />
+            <span>
+              <strong>[SAMPLE PREVIEW MODE]</strong> The items below are synthetic sample pairs to preview side-by-side codec &amp; resolution comparison. No physical files exist at these sample paths.
+            </span>
+          </div>
+          <button
+            onClick={() => onClearSampleDuplicates?.()}
+            className="text-[11px] underline text-purple-300 hover:text-purple-100 font-mono"
+          >
+            Clear Samples
+          </button>
+        </div>
+      )}
 
       {/* Safety Notice Banner */}
       <div className="p-3.5 rounded-xl bg-amber-950/30 border border-amber-800/60 text-xs text-amber-200 flex items-center justify-between">
@@ -242,7 +281,7 @@ export const DuplicatesTab: React.FC<DuplicatesTabProps> = ({
                         Codec: <span className="text-slate-100">{dup.fileA.codec}</span>
                       </div>
                       <div>
-                        Duration: <span className="text-slate-100">{dup.fileA.duration || "2:16:16"}</span>
+                        Duration: <span className="text-slate-100">{dup.fileA.duration || "--"}</span>
                       </div>
                       {dup.fileA.hash && (
                         <div className="col-span-2 truncate text-[10px] text-slate-400">
@@ -276,7 +315,7 @@ export const DuplicatesTab: React.FC<DuplicatesTabProps> = ({
                         Codec: <span className="text-slate-100">{dup.fileB.codec}</span>
                       </div>
                       <div>
-                        Duration: <span className="text-slate-100">{dup.fileB.duration || "2:16:16"}</span>
+                        Duration: <span className="text-slate-100">{dup.fileB.duration || "--"}</span>
                       </div>
                       {dup.fileB.hash && (
                         <div className="col-span-2 truncate text-[10px] text-slate-400">

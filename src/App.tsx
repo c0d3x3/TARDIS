@@ -130,6 +130,28 @@ export default function App() {
     }
   };
 
+  const handleLoadSampleDuplicates = async () => {
+    try {
+      const resp = await fetch("/api/demo/load-duplicates", { method: "POST" });
+      const res = await resp.json();
+      await loadState();
+      showToast(res.message || "Loaded sample duplicate candidates");
+    } catch (err: any) {
+      showToast(`Error: ${err.message}`);
+    }
+  };
+
+  const handleClearSampleDuplicates = async () => {
+    try {
+      const resp = await fetch("/api/demo/clear-duplicates", { method: "POST" });
+      const res = await resp.json();
+      await loadState();
+      showToast(res.message || "Cleared sample duplicate candidates");
+    } catch (err: any) {
+      showToast(`Error: ${err.message}`);
+    }
+  };
+
   const handleUpdateSettings = async (newSettings: any) => {
     try {
       const current = data?.settings || {};
@@ -164,7 +186,7 @@ export default function App() {
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-slate-950 text-slate-100 font-sans select-none">
       {/* Windows 11 Title Bar */}
       <TitleBar
-        serverConnected={true}
+        serverConnected={data.connectionStatus.connected}
         onRefresh={handleRefresh}
         isRefreshing={isRefreshing}
       />
@@ -175,7 +197,13 @@ export default function App() {
         <NavigationSidebar
           currentTab={currentTab}
           onSelectTab={(tab) => setCurrentTab(tab)}
-          queueCount={data.historicalSync.queuedFiles}
+          queueCount={
+            data.historicalSync.isLiveVerified && data.historicalSync.queuedFiles !== null
+              ? data.historicalSync.queuedFiles
+              : data.userBaseline.enabled
+              ? data.userBaseline.queuedFiles
+              : null
+          }
           duplicatePendingCount={pendingDuplicates}
           monitoredDrives={data.settings.monitoredDrives}
         />
@@ -213,6 +241,8 @@ export default function App() {
               onDuplicateAction={handleDuplicateAction}
               onTriggerScan={handleTriggerScan}
               isScanning={isScanning}
+              onLoadSampleDuplicates={handleLoadSampleDuplicates}
+              onClearSampleDuplicates={handleClearSampleDuplicates}
             />
           )}
 

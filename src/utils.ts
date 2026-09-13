@@ -1,5 +1,6 @@
-export function formatBytes(bytes: number, decimals: number = 2): string {
-  if (!bytes || bytes === 0) return "0 B";
+export function formatBytes(bytes: number | null | undefined, decimals: number = 2): string {
+  if (bytes === null || bytes === undefined) return "--";
+  if (bytes === 0) return "0 B";
   const k = 1024;
   const dm = decimals < 0 ? 0 : decimals;
   const sizes = ["B", "KB", "MB", "GB", "TB", "PB"];
@@ -8,8 +9,8 @@ export function formatBytes(bytes: number, decimals: number = 2): string {
   return `${val.toFixed(dm)} ${sizes[i]}`;
 }
 
-export function formatPercent(val: number): string {
-  if (isNaN(val)) return "0.0%";
+export function formatPercent(val: number | null | undefined): string {
+  if (val === null || val === undefined || isNaN(val)) return "--";
   return `${val.toFixed(1)}%`;
 }
 

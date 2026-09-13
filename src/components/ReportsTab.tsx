@@ -4,11 +4,11 @@ import {
   Download,
   Copy,
   Check,
-  Printer,
   HardDrive,
   CheckCircle2,
   AlertTriangle,
-  FolderTree
+  FolderTree,
+  Info
 } from "lucide-react";
 import { TardisDatabaseState } from "../types";
 import { formatBytes, formatPercent, formatDate } from "../utils";
@@ -18,7 +18,7 @@ interface ReportsTabProps {
 }
 
 export const ReportsTab: React.FC<ReportsTabProps> = ({ data }) => {
-  const { settings, historicalSync, sessions, duplicates } = data;
+  const { settings, historicalSync, userBaseline, sessions, duplicates, connectionStatus } = data;
   const [copied, setCopied] = useState(false);
 
   // Generate plain text report
@@ -28,19 +28,30 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({ data }) => {
     report += `COMPREHENSIVE AUDIT & STORAGE REPORT\n`;
     report += `Generated: ${new Date().toLocaleString()}\n`;
     report += `Target Platform: Windows 11 64-bit • Local SQLite Engine\n`;
+    report += `Data Origin: ${historicalSync.isLiveVerified ? "Tdarr Live API (Verified)" : "User-Provided Baseline / Awaiting Sync"}\n`;
     report += `========================================================================\n\n`;
 
     report += `1. HISTORICAL TDARR TRANSCODE PERFORMANCE\n`;
     report += `------------------------------------------------------------------------\n`;
-    report += `Total Files Processed (Success/Skip): ${historicalSync.totalProcessedFiles.toLocaleString()}\n`;
-    report += `Transcoded Successfully:             ${historicalSync.successFiles.toLocaleString()}\n`;
-    report += `Not Required / Skipped:               ${historicalSync.notRequiredFiles.toLocaleString()}\n`;
-    report += `Failed Jobs:                          ${historicalSync.failedFiles.toLocaleString()}\n`;
-    report += `Current Transcode Queue:              ${historicalSync.queuedFiles.toLocaleString()} pending\n\n`;
-    report += `Total Original Media Size:            ${formatBytes(historicalSync.totalOriginalSizeBytes, 2)}\n`;
-    report += `Total Resulting Media Size:           ${formatBytes(historicalSync.totalResultingSizeBytes, 2)}\n`;
-    report += `Total Storage Saved:                  ${formatBytes(historicalSync.totalSpaceSavedBytes, 2)}\n`;
-    report += `Average Space Reduction:              ${formatPercent(historicalSync.percentageReduction)}\n\n`;
+    if (historicalSync.isLiveVerified && historicalSync.totalProcessedFiles !== null) {
+      report += `Total Files Processed (Live):         ${historicalSync.totalProcessedFiles.toLocaleString()}\n`;
+      report += `Transcoded Successfully:             ${historicalSync.successFiles ?? "--"}\n`;
+      report += `Not Required / Skipped:               ${historicalSync.notRequiredFiles ?? "--"}\n`;
+      report += `Failed Jobs:                          ${historicalSync.failedFiles ?? "--"}\n`;
+      report += `Current Transcode Queue:              ${historicalSync.queuedFiles ?? "--"} pending\n\n`;
+      report += `Total Original Media Size:            ${formatBytes(historicalSync.totalOriginalSizeBytes, 2)}\n`;
+      report += `Total Resulting Media Size:           ${formatBytes(historicalSync.totalResultingSizeBytes, 2)}\n`;
+      report += `Total Storage Saved:                  ${formatBytes(historicalSync.totalSpaceSavedBytes, 2)}\n`;
+      report += `Average Space Reduction:              ${formatPercent(historicalSync.percentageReduction)}\n\n`;
+    } else {
+      report += `Status: Awaiting Live Tdarr API Sync\n`;
+      if (userBaseline.enabled) {
+        report += `User Baseline Processed Files:        ~${userBaseline.totalProcessedFiles.toLocaleString()} (Unverified)\n`;
+        report += `User Baseline Queued Files:           ~${userBaseline.queuedFiles.toLocaleString()} (Unverified)\n`;
+        report += `Baseline Notes:                       ${userBaseline.notes}\n`;
+      }
+      report += `Lifetime Space Saved:                 -- (Requires live Tdarr sync)\n\n`;
+    }
 
     report += `2. MONITORED STORAGE DRIVES\n`;
     report += `------------------------------------------------------------------------\n`;
@@ -66,19 +77,23 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({ data }) => {
     report += `Exact Binary Duplicates (Level 1):    ${exact}\n`;
     report += `Probable Duplicates (Level 2):        ${probable}\n`;
     report += `Possible Edition Duplicates (Level 3): ${possible}\n`;
-    report += `No files are automatically deleted without explicit user approval.\n\n`;
+    report += `Safety: Manual confirmation required for any file deletion.\n\n`;
 
-    report += `5. RECORDED SESSIONS\n`;
+    report += `5. BENCHMARKED SESSIONS (${sessions.length} RECORDED)\n`;
     report += `------------------------------------------------------------------------\n`;
-    sessions.forEach((s) => {
-      report += `Session: ${s.id}\n`;
-      report += `  Start: ${formatDate(s.startTime)} | End: ${formatDate(s.endTime)}\n`;
-      report += `  Drive: ${s.drive} | Files: ${s.filesProcessed} (Success: ${s.successful}, Skip: ${s.skipped}, Fail: ${s.failed})\n`;
-      report += `  Original: ${formatBytes(s.originalBytes, 1)} -> Result: ${formatBytes(s.currentBytes, 1)}\n`;
-      report += `  Saved: ${formatBytes(s.spaceSavedBytes, 1)} (-${s.reductionPercent}%)\n`;
-      report += `  Drive Before: Used ${formatBytes(s.driveBefore.used, 2)}, Free ${formatBytes(s.driveBefore.free, 2)}\n`;
-      report += `  Drive After:  Used ${formatBytes(s.driveCurrent.used, 2)}, Free ${formatBytes(s.driveCurrent.free, 2)}\n\n`;
-    });
+    if (sessions.length > 0) {
+      sessions.forEach((s) => {
+        report += `Session: ${s.id}\n`;
+        report += `  Start: ${formatDate(s.startTime)} | End: ${formatDate(s.endTime)}\n`;
+        report += `  Drive: ${s.drive} | Files: ${s.filesProcessed} (Success: ${s.successful}, Skip: ${s.skipped}, Fail: ${s.failed})\n`;
+        report += `  Original: ${formatBytes(s.originalBytes, 1)} -> Result: ${formatBytes(s.currentBytes, 1)}\n`;
+        report += `  Saved: ${formatBytes(s.spaceSavedBytes, 1)} (-${s.reductionPercent}%)\n`;
+        report += `  Drive Before: Used ${formatBytes(s.driveBefore.used, 2)}, Free ${formatBytes(s.driveBefore.free, 2)}\n`;
+        report += `  Drive After:  Used ${formatBytes(s.driveCurrent.used, 2)}, Free ${formatBytes(s.driveCurrent.free, 2)}\n\n`;
+      });
+    } else {
+      report += `No active sessions logged in local SQLite archive yet.\n\n`;
+    }
 
     report += `========================================================================\n`;
     report += `End of TARDIS Report\n`;
@@ -89,10 +104,6 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({ data }) => {
     navigator.clipboard.writeText(generateTextReport());
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
-  };
-
-  const handleDownloadCsv = () => {
-    window.open("/api/reports/csv", "_blank");
   };
 
   return (
@@ -119,14 +130,15 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({ data }) => {
             <span>{copied ? "Copied Report" : "Copy Text Report"}</span>
           </button>
 
-          <button
+          <a
             id="reports-download-csv-btn"
-            onClick={handleDownloadCsv}
+            href="/api/reports/csv"
+            download="TARDIS_Audit_Report.csv"
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-semibold transition-all shadow-sm"
           >
             <Download className="w-3.5 h-3.5" />
             <span>Download CSV Export</span>
-          </button>
+          </a>
         </div>
       </div>
 
@@ -142,20 +154,29 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({ data }) => {
             </span>
           </div>
           <div className="text-xs text-slate-400 mt-1">
-            System: Windows 11 Desktop Companion • Tdarr Local Cluster
+            System: Windows 11 Desktop Companion • {connectionStatus.connected ? "Tdarr Connected" : "Local Baseline Mode"}
           </div>
         </div>
 
         {/* Section 1: Transcode Performance */}
         <div className="space-y-3">
-          <h3 className="text-xs font-semibold uppercase tracking-wider text-blue-400 font-mono">
-            1. Transcoding Metrics &amp; Storage Efficiency
-          </h3>
+          <div className="flex items-center justify-between">
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-blue-400 font-mono">
+              1. Transcoding Metrics &amp; Storage Efficiency
+            </h3>
+            <span className="text-[10px] font-mono text-slate-400">
+              {historicalSync.isLiveVerified ? "Live Verified" : "User Baseline"}
+            </span>
+          </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 font-mono text-xs">
             <div className="p-3 rounded-lg bg-slate-950 border border-slate-800">
               <span className="text-slate-400 text-[11px] block">Files Processed:</span>
               <span className="text-slate-100 font-bold text-sm">
-                {historicalSync.totalProcessedFiles.toLocaleString()}
+                {historicalSync.isLiveVerified && historicalSync.totalProcessedFiles !== null
+                  ? historicalSync.totalProcessedFiles.toLocaleString()
+                  : userBaseline.enabled
+                  ? `~${userBaseline.totalProcessedFiles.toLocaleString()} (Baseline)`
+                  : "--"}
               </span>
             </div>
             <div className="p-3 rounded-lg bg-slate-950 border border-slate-800">
@@ -173,7 +194,9 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({ data }) => {
             <div className="p-3 rounded-lg bg-slate-950 border border-slate-800">
               <span className="text-slate-400 text-[11px] block">Net Space Saved:</span>
               <span className="text-emerald-400 font-bold text-sm">
-                {formatBytes(historicalSync.totalSpaceSavedBytes, 2)} (-{historicalSync.percentageReduction}%)
+                {historicalSync.isLiveVerified && historicalSync.totalSpaceSavedBytes !== null
+                  ? `${formatBytes(historicalSync.totalSpaceSavedBytes, 2)} (-${historicalSync.percentageReduction}%)`
+                  : "--"}
               </span>
             </div>
           </div>

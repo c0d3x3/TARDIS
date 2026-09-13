@@ -16,7 +16,7 @@ import { formatBytes } from "../utils";
 interface NavigationSidebarProps {
   currentTab: ViewTab;
   onSelectTab: (tab: ViewTab) => void;
-  queueCount: number;
+  queueCount: number | null;
   duplicatePendingCount: number;
   monitoredDrives: Array<{ driveLetter: string; usedBytes: number; totalBytes: number }>;
 }
@@ -30,7 +30,7 @@ export const NavigationSidebar: React.FC<NavigationSidebarProps> = ({
 }) => {
   const navItems: { id: ViewTab; label: string; icon: React.ComponentType<{ className?: string }>; badge?: string | number; badgeColor?: string }[] = [
     { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
-    { id: "tdarr", label: "Tdarr", icon: Server, badge: queueCount > 0 ? `${queueCount} Q` : undefined, badgeColor: "bg-blue-900/60 text-blue-300 border-blue-700" },
+    { id: "tdarr", label: "Tdarr", icon: Server, badge: queueCount && queueCount > 0 ? `${queueCount} Q` : undefined, badgeColor: "bg-blue-900/60 text-blue-300 border-blue-700" },
     { id: "analytics", label: "Analytics", icon: BarChart3 },
     { id: "duplicates", label: "Duplicates", icon: Copy, badge: duplicatePendingCount > 0 ? duplicatePendingCount : undefined, badgeColor: "bg-amber-900/60 text-amber-300 border-amber-700" },
     { id: "history", label: "History", icon: Clock },
