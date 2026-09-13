@@ -10,6 +10,7 @@ import { HistoryTab } from "./components/HistoryTab";
 import { ReportsTab } from "./components/ReportsTab";
 import { DiscordTab } from "./components/DiscordTab";
 import { SettingsTab } from "./components/SettingsTab";
+import { SetupWizardModal } from "./components/SetupWizardModal";
 
 export default function App() {
   const [currentTab, setCurrentTab] = useState<ViewTab>("dashboard");
@@ -18,6 +19,7 @@ export default function App() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [isWizardOpen, setIsWizardOpen] = useState(false);
 
   // Load database state from backend
   const loadState = async () => {
@@ -221,6 +223,7 @@ export default function App() {
               onStopSession={handleStopSession}
               isSessionActive={isSessionActive}
               onSync={handleHistoricalSync}
+              onOpenWizard={() => setIsWizardOpen(true)}
             />
           )}
 
@@ -262,10 +265,25 @@ export default function App() {
           )}
 
           {currentTab === "settings" && (
-            <SettingsTab data={data} onUpdateSettings={handleUpdateSettings} />
+            <SettingsTab
+              data={data}
+              onUpdateSettings={handleUpdateSettings}
+              onOpenWizard={() => setIsWizardOpen(true)}
+            />
           )}
         </main>
       </div>
+
+      {/* Setup Wizard Modal */}
+      <SetupWizardModal
+        isOpen={isWizardOpen}
+        onClose={() => setIsWizardOpen(false)}
+        data={data}
+        onSave={async (newSettings) => {
+          await handleUpdateSettings(newSettings);
+          showToast("Configuration saved successfully");
+        }}
+      />
 
       {/* Floating Status Notification Toast */}
       {toastMessage && (

@@ -25,6 +25,7 @@ interface DashboardTabProps {
   onStopSession: () => void;
   isSessionActive: boolean;
   onSync: () => void;
+  onOpenWizard?: () => void;
 }
 
 export const DashboardTab: React.FC<DashboardTabProps> = ({
@@ -33,7 +34,8 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
   onStartSession,
   onStopSession,
   isSessionActive,
-  onSync
+  onSync,
+  onOpenWizard
 }) => {
   const { settings, userBaseline, historicalSync, connectionStatus, sessions, duplicates } = data;
 
@@ -100,6 +102,30 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
           </button>
         </div>
       </div>
+
+      {/* First Run / Unconfigured Banner */}
+      {(!settings.firstRunCompleted || (settings.libraries.length === 0 && settings.monitoredDrives.length === 0)) && (
+        <div className="p-4 rounded-xl bg-amber-950/40 border border-amber-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+            <div>
+              <div className="font-bold text-amber-200 text-sm">
+                Initial Configuration Required
+              </div>
+              <p className="text-amber-300/80 text-[11px] mt-0.5">
+                TARDIS has not been configured with your media library paths or storage drives yet.
+                Run the Setup Wizard to connect your real directories and drives.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => (onOpenWizard ? onOpenWizard() : onNavigate("settings"))}
+            className="px-4 py-2 rounded-lg bg-amber-600 hover:bg-amber-500 text-white font-semibold text-xs transition-all shrink-0 shadow-sm"
+          >
+            Launch Setup Wizard
+          </button>
+        </div>
+      )}
 
       {/* Truthful Architecture Status Notice */}
       {!connectionStatus.connected && (
@@ -404,54 +430,66 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
           </div>
 
           <div className="space-y-4">
-            {settings.monitoredDrives.map((drive) => {
-              const hasData = drive.totalBytes !== null && drive.usedBytes !== null && drive.totalBytes > 0;
-              const usedPct = hasData ? Math.round(((drive.usedBytes as number) / (drive.totalBytes as number)) * 100) : null;
-              const freePct = usedPct !== null ? 100 - usedPct : null;
-              return (
-                <div
-                  key={drive.driveLetter}
-                  className="p-3.5 rounded-lg bg-slate-950/60 border border-slate-800/80 space-y-2"
+            {settings.monitoredDrives.length === 0 ? (
+              <div className="p-4 rounded-lg bg-slate-950/60 border border-dashed border-slate-800 text-center text-xs text-slate-400 space-y-2">
+                <p>No storage drives currently monitored.</p>
+                <button
+                  onClick={() => onNavigate("settings")}
+                  className="px-3 py-1.5 rounded bg-blue-600/30 hover:bg-blue-600/40 text-blue-300 border border-blue-500/40 text-[11px] font-medium transition-all"
                 >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span className="px-1.5 py-0.5 rounded bg-blue-900/60 text-blue-300 font-mono font-bold text-xs border border-blue-700/60">
-                        {drive.driveLetter}
-                      </span>
-                      <span className="text-xs font-semibold text-slate-200">{drive.label}</span>
-                    </div>
-                    <span className="text-xs font-mono text-slate-400">
-                      {hasData ? `${usedPct}% used` : "Not measured"}
-                    </span>
-                  </div>
-
-                  {hasData ? (
-                    <>
-                      <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
-                        <div
-                          className={`h-full rounded-full ${
-                            (usedPct || 0) > 85 ? "bg-amber-500" : "bg-blue-500"
-                          }`}
-                          style={{ width: `${usedPct}%` }}
-                        />
-                      </div>
-
-                      <div className="flex justify-between text-[11px] font-mono text-slate-400 pt-0.5">
-                        <span>Used: {formatBytes(drive.usedBytes, 1)}</span>
-                        <span className="text-emerald-400 font-semibold">
-                          Free: {formatBytes(drive.freeBytes, 1)} ({freePct}%)
+                  Configure Drives in Settings
+                </button>
+              </div>
+            ) : (
+              settings.monitoredDrives.map((drive) => {
+                const hasData = drive.totalBytes !== null && drive.usedBytes !== null && drive.totalBytes > 0;
+                const usedPct = hasData ? Math.round(((drive.usedBytes as number) / (drive.totalBytes as number)) * 100) : null;
+                const freePct = usedPct !== null ? 100 - usedPct : null;
+                return (
+                  <div
+                    key={drive.driveLetter}
+                    className="p-3.5 rounded-lg bg-slate-950/60 border border-slate-800/80 space-y-2"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="px-1.5 py-0.5 rounded bg-blue-900/60 text-blue-300 font-mono font-bold text-xs border border-blue-700/60">
+                          {drive.driveLetter}
                         </span>
+                        <span className="text-xs font-semibold text-slate-200">{drive.label}</span>
                       </div>
-                    </>
-                  ) : (
-                    <div className="text-[11px] text-slate-400 bg-slate-900/50 p-2 rounded border border-slate-800 flex items-center justify-between">
-                      <span>Status: {drive.error || "Not available yet"}</span>
-                      <span className="text-[10px] text-slate-400">Real OS call on Windows 11</span>
+                      <span className="text-xs font-mono text-slate-400">
+                        {hasData ? `${usedPct}% used` : "Not measured"}
+                      </span>
                     </div>
-                  )}
-                </div>
-              );
-            })}
+
+                    {hasData ? (
+                      <>
+                        <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
+                          <div
+                            className={`h-full rounded-full ${
+                              (usedPct || 0) > 85 ? "bg-amber-500" : "bg-blue-500"
+                            }`}
+                            style={{ width: `${usedPct}%` }}
+                          />
+                        </div>
+
+                        <div className="flex justify-between text-[11px] font-mono text-slate-400 pt-0.5">
+                          <span>Used: {formatBytes(drive.usedBytes, 1)}</span>
+                          <span className="text-emerald-400 font-semibold">
+                            Free: {formatBytes(drive.freeBytes, 1)} ({freePct}%)
+                          </span>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="text-[11px] text-slate-400 bg-slate-900/50 p-2 rounded border border-slate-800 flex items-center justify-between">
+                        <span>Status: {drive.error || "Not available yet"}</span>
+                        <span className="text-[10px] text-slate-400">Real OS call on Windows 11</span>
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            )}
           </div>
 
           <div className="p-3 rounded-lg bg-slate-800/40 border border-slate-700/40 text-[11px] text-slate-400">

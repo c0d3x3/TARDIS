@@ -142,6 +142,7 @@ export function normalizeMediaTitle(filename: string): string {
 function getInitialDbState(): TardisDatabaseState {
   return {
     settings: {
+      firstRunCompleted: false,
       tdarrUrl: "http://localhost:8265",
       autoSyncIntervalSec: 15,
       autoTrackingEnabled: false,
@@ -150,41 +151,14 @@ function getInitialDbState(): TardisDatabaseState {
       discordNotifyOnError: true,
       discordNotifyOnDuplicates: true,
       safeDeleteMode: "recycle_bin",
-      monitoredDrives: [
-        {
-          driveLetter: "D:",
-          label: "Media Primary (D:)",
-          totalBytes: null,
-          usedBytes: null,
-          freeBytes: null,
-          status: "unavailable",
-          error: "Not yet measured or drive not mounted",
-          lastMeasured: null
-        },
-        {
-          driveLetter: "E:",
-          label: "Media Secondary (E:)",
-          totalBytes: null,
-          usedBytes: null,
-          freeBytes: null,
-          status: "unavailable",
-          error: "Not yet measured or drive not mounted",
-          lastMeasured: null
-        }
-      ],
-      libraries: [
-        { id: "lib_movies_4k", name: "Movies (4K UHD)", path: "D:\\Movies_4K", drive: "D:" },
-        { id: "lib_movies_hd", name: "Movies (HD 1080p)", path: "D:\\Movies_HD", drive: "D:" },
-        { id: "lib_tv_shows", name: "TV Shows (Series)", path: "D:\\TV_Shows", drive: "D:" },
-        { id: "lib_anime", name: "Anime & Animation", path: "E:\\Anime", drive: "E:" },
-        { id: "lib_docs", name: "Documentaries", path: "E:\\Documentaries", drive: "E:" }
-      ]
+      monitoredDrives: [],
+      libraries: []
     },
     userBaseline: {
-      enabled: true,
-      totalProcessedFiles: 1812,
-      queuedFiles: 909,
-      notes: "User-reported approximate counts from Tdarr UI. Retained as baseline until superseded by verified live sync.",
+      enabled: false,
+      totalProcessedFiles: 0,
+      queuedFiles: 0,
+      notes: "No baseline configured.",
       lastUpdated: new Date().toISOString()
     },
     historicalSync: {

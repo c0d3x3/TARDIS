@@ -146,6 +146,7 @@ export interface DiscordLog {
 }
 
 export interface TardisSettings {
+  firstRunCompleted?: boolean;
   tdarrUrl: string;
   autoSyncIntervalSec: number;
   autoTrackingEnabled: boolean;
