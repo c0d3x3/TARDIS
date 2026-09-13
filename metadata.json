@@ -1,0 +1,6 @@
+{
+  "name": "TARDIS - Tdarr Analytics, Reports & Duplicates",
+  "description": "Standalone companion system for Tdarr: advanced storage and transcoding analytics, duplicate media scanner, session tracking, and Discord notifications.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
