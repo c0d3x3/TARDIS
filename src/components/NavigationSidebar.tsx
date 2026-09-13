@@ -18,7 +18,7 @@ interface NavigationSidebarProps {
   onSelectTab: (tab: ViewTab) => void;
   queueCount: number | null;
   duplicatePendingCount: number;
-  monitoredDrives: Array<{ driveLetter: string; usedBytes: number; totalBytes: number }>;
+  monitoredDrives: Array<{ driveLetter: string; usedBytes: number | null; totalBytes: number | null; status?: string }>;
 }
 
 export const NavigationSidebar: React.FC<NavigationSidebarProps> = ({
@@ -93,23 +93,28 @@ export const NavigationSidebar: React.FC<NavigationSidebarProps> = ({
         </div>
         <div className="space-y-2">
           {monitoredDrives.map((d) => {
-            const pct = Math.round((d.usedBytes / d.totalBytes) * 100);
+            const hasData = d.totalBytes !== null && d.usedBytes !== null && d.totalBytes > 0;
+            const pct = hasData ? Math.round(((d.usedBytes as number) / (d.totalBytes as number)) * 100) : null;
             return (
               <div key={d.driveLetter} className="space-y-0.5">
                 <div className="flex justify-between text-[11px] text-slate-300">
                   <span className="font-mono font-semibold">{d.driveLetter}\</span>
                   <span className="text-slate-400 font-mono text-[10px]">
-                    {formatBytes(d.usedBytes, 1)} / {formatBytes(d.totalBytes, 1)}
+                    {hasData ? `${formatBytes(d.usedBytes, 1)} / ${formatBytes(d.totalBytes, 1)}` : "Not measured"}
                   </span>
                 </div>
-                <div className="w-full h-1.5 bg-slate-700 rounded-full overflow-hidden">
-                  <div
-                    className={`h-full rounded-full ${
-                      pct > 85 ? "bg-amber-500" : "bg-blue-500"
-                    }`}
-                    style={{ width: `${pct}%` }}
-                  />
-                </div>
+                {hasData ? (
+                  <div className="w-full h-1.5 bg-slate-700 rounded-full overflow-hidden">
+                    <div
+                      className={`h-full rounded-full ${
+                        (pct || 0) > 85 ? "bg-amber-500" : "bg-blue-500"
+                      }`}
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
+                ) : (
+                  <div className="text-[9px] text-slate-400 font-mono">Awaiting OS measurement</div>
+                )}
               </div>
             );
           })}

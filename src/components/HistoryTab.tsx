@@ -156,11 +156,10 @@ export const HistoryTab: React.FC<HistoryTabProps> = ({
                   <th className="pb-2">Started</th>
                   <th className="pb-2">Duration</th>
                   <th className="pb-2">Drive</th>
-                  <th className="pb-2">Files</th>
-                  <th className="pb-2">Original Media</th>
-                  <th className="pb-2">Resulting Size</th>
-                  <th className="pb-2">Space Saved</th>
-                  <th className="pb-2">Reduction</th>
+                  <th className="pb-2">Start Free</th>
+                  <th className="pb-2">End Free</th>
+                  <th className="pb-2">Drive Space Change</th>
+                  <th className="pb-2">Files Processed</th>
                   <th className="pb-2">Status</th>
                   <th className="pb-2 text-right">Details</th>
                 </tr>
@@ -172,11 +171,14 @@ export const HistoryTab: React.FC<HistoryTabProps> = ({
                     <td className="py-2.5 text-slate-300">{formatDate(s.startTime)}</td>
                     <td className="py-2.5 text-slate-400">{formatDuration(s.startTime, s.endTime)}</td>
                     <td className="py-2.5 text-blue-300 font-bold">{s.drive}</td>
-                    <td className="py-2.5 text-slate-200">{s.filesProcessed}</td>
-                    <td className="py-2.5">{formatBytes(s.originalBytes, 1)}</td>
-                    <td className="py-2.5">{formatBytes(s.currentBytes, 1)}</td>
-                    <td className="py-2.5 text-emerald-400 font-bold">{formatBytes(s.spaceSavedBytes, 1)}</td>
-                    <td className="py-2.5 text-emerald-300 font-semibold">{s.reductionPercent}%</td>
+                    <td className="py-2.5">{formatBytes(s.driveStartFreeBytes, 1)}</td>
+                    <td className="py-2.5">{formatBytes(s.driveEndFreeBytes, 1)}</td>
+                    <td className="py-2.5 text-emerald-400 font-bold">
+                      {s.driveSpaceChangeBytes !== null ? formatBytes(s.driveSpaceChangeBytes, 2) : "Not available yet"}
+                    </td>
+                    <td className="py-2.5 text-slate-200">
+                      {s.filesProcessed !== null ? s.filesProcessed : "File count unavailable"}
+                    </td>
                     <td className="py-2.5">
                       <span
                         className={`px-1.5 py-0.5 rounded text-[10px] border ${
@@ -245,26 +247,33 @@ export const HistoryTab: React.FC<HistoryTabProps> = ({
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-400">Files Processed:</span>
-                <span className="text-slate-200 font-semibold">{activeSessionDetail.filesProcessed}</span>
+                <span className="text-slate-200 font-semibold">
+                  {activeSessionDetail.filesProcessed !== null ? activeSessionDetail.filesProcessed : "File count unavailable"}
+                </span>
               </div>
 
               <div className="grid grid-cols-2 gap-3 pt-2">
                 <div className="p-2.5 rounded bg-slate-950 border border-slate-800">
                   <div className="text-slate-400 text-[11px] font-bold mb-1">Drive Baseline (Before):</div>
-                  <div>Used: {formatBytes(activeSessionDetail.driveBefore.used, 2)}</div>
-                  <div>Free: {formatBytes(activeSessionDetail.driveBefore.free, 2)}</div>
+                  <div>Used: {formatBytes(activeSessionDetail.driveBefore?.used ?? null, 2)}</div>
+                  <div>Free: {formatBytes(activeSessionDetail.driveBefore?.free ?? activeSessionDetail.driveStartFreeBytes, 2)}</div>
                 </div>
                 <div className="p-2.5 rounded bg-slate-950 border border-slate-800">
-                  <div className="text-emerald-400 text-[11px] font-bold mb-1">Drive Measurement (Current):</div>
-                  <div>Used: {formatBytes(activeSessionDetail.driveCurrent.used, 2)}</div>
-                  <div>Free: {formatBytes(activeSessionDetail.driveCurrent.free, 2)}</div>
+                  <div className="text-emerald-400 text-[11px] font-bold mb-1">Drive Measurement (Ending):</div>
+                  <div>Used: {formatBytes(activeSessionDetail.driveCurrent?.used ?? null, 2)}</div>
+                  <div>Free: {formatBytes(activeSessionDetail.driveCurrent?.free ?? activeSessionDetail.driveEndFreeBytes, 2)}</div>
                 </div>
               </div>
 
               <div className="p-2.5 rounded bg-emerald-950/40 border border-emerald-800/60 text-emerald-300">
-                <div className="font-bold">Total Space Reclaimed:</div>
+                <div className="font-bold">Drive Space Change:</div>
                 <div className="text-base font-bold">
-                  {formatBytes(activeSessionDetail.spaceSavedBytes, 2)} (-{activeSessionDetail.reductionPercent}%)
+                  {activeSessionDetail.driveSpaceChangeBytes !== null
+                    ? formatBytes(activeSessionDetail.driveSpaceChangeBytes, 2)
+                    : "Not available yet"}
+                </div>
+                <div className="text-[10px] text-emerald-400/80 mt-0.5">
+                  Calculated directly as ending free space - starting free space
                 </div>
               </div>
             </div>

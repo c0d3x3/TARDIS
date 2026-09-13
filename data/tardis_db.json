@@ -1,0 +1,99 @@
+{
+  "settings": {
+    "tdarrUrl": "http://localhost:8265",
+    "autoSyncIntervalSec": 15,
+    "autoTrackingEnabled": false,
+    "discordWebhookUrl": "",
+    "discordNotifyOnComplete": true,
+    "discordNotifyOnError": true,
+    "discordNotifyOnDuplicates": true,
+    "safeDeleteMode": "recycle_bin",
+    "monitoredDrives": [
+      {
+        "driveLetter": "D:",
+        "label": "Media Primary (D:)",
+        "totalBytes": null,
+        "usedBytes": null,
+        "freeBytes": null,
+        "status": "unavailable",
+        "error": "Awaiting OS measurement",
+        "lastMeasured": null
+      },
+      {
+        "driveLetter": "E:",
+        "label": "Media Secondary (E:)",
+        "totalBytes": null,
+        "usedBytes": null,
+        "freeBytes": null,
+        "status": "unavailable",
+        "error": "Awaiting OS measurement",
+        "lastMeasured": null
+      }
+    ],
+    "libraries": [
+      {
+        "id": "lib_movies_4k",
+        "name": "Movies (4K UHD)",
+        "path": "D:\\Movies_4K",
+        "drive": "D:"
+      },
+      {
+        "id": "lib_movies_hd",
+        "name": "Movies (HD 1080p)",
+        "path": "D:\\Movies_HD",
+        "drive": "D:"
+      },
+      {
+        "id": "lib_tv_shows",
+        "name": "TV Shows (Series)",
+        "path": "D:\\TV_Shows",
+        "drive": "D:"
+      },
+      {
+        "id": "lib_anime",
+        "name": "Anime & Animation",
+        "path": "E:\\Anime",
+        "drive": "E:"
+      },
+      {
+        "id": "lib_docs",
+        "name": "Documentaries",
+        "path": "E:\\Documentaries",
+        "drive": "E:"
+      }
+    ]
+  },
+  "userBaseline": {
+    "enabled": true,
+    "totalProcessedFiles": 1812,
+    "queuedFiles": 909,
+    "notes": "User-reported approximate counts from Tdarr UI. Retained as baseline until superseded by verified live sync.",
+    "lastUpdated": "2026-09-13T13:00:00.000Z"
+  },
+  "historicalSync": {
+    "lastSyncTime": null,
+    "status": "never_synced",
+    "isLiveVerified": false,
+    "totalProcessedFiles": null,
+    "successFiles": null,
+    "notRequiredFiles": null,
+    "failedFiles": null,
+    "queuedFiles": null,
+    "totalOriginalSizeBytes": null,
+    "totalResultingSizeBytes": null,
+    "totalSpaceSavedBytes": null,
+    "percentageReduction": null,
+    "nodes": []
+  },
+  "connectionStatus": {
+    "connected": false,
+    "lastChecked": null,
+    "serverAddress": "http://localhost:8265",
+    "message": "Awaiting live connection probe to Tdarr server."
+  },
+  "sessions": [],
+  "duplicates": [],
+  "scannedFiles": [],
+  "tdarrObservations": [],
+  "discordLogs": []
+}

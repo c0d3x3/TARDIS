@@ -51,13 +51,13 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ data, onUpdateSettings
   const handleAddDrive = () => {
     if (!newDriveLetter) return;
     const letter = newDriveLetter.toUpperCase().replace(":", "") + ":";
-    const totalBytes = newDriveTb * 1000 * 1000 * 1000 * 1000;
     const newDrive = {
       driveLetter: letter,
-      label: newDriveLabel || `Media Storage (${newDriveTb}TB)`,
-      totalBytes,
-      usedBytes: totalBytes * 0.7,
-      freeBytes: totalBytes * 0.3
+      label: newDriveLabel || `Media Storage (${letter})`,
+      totalBytes: null,
+      usedBytes: null,
+      freeBytes: null,
+      error: "Awaiting measurement"
     };
     setDrives([...drives, newDrive]);
     setNewDriveLetter("");

@@ -38,9 +38,12 @@ export interface DuplicateItem {
 export interface DriveInfo {
   driveLetter: string;
   label: string;
-  totalBytes: number;
-  usedBytes: number;
-  freeBytes: number;
+  totalBytes: number | null;
+  usedBytes: number | null;
+  freeBytes: number | null;
+  status: "available" | "unavailable";
+  error?: string;
+  lastMeasured?: string | null;
 }
 
 export interface LibraryInfo {
@@ -48,6 +51,28 @@ export interface LibraryInfo {
   name: string;
   path: string;
   drive: string;
+}
+
+export interface ScannedMediaFile {
+  fullPath: string;
+  filename: string;
+  extension: string;
+  sizeBytes: number;
+  modifiedTime: string;
+  libraryId: string;
+  sha256?: string;
+}
+
+export interface TdarrObservation {
+  id: string;
+  timestamp: string;
+  connected: boolean;
+  serverAddress: string;
+  nodeCount: number;
+  nodesSummary: string[];
+  queuedFiles: number | null;
+  processedFiles: number | null;
+  message: string;
 }
 
 export interface TdarrNode {
@@ -85,28 +110,27 @@ export interface HistoricalSyncStats {
 }
 
 export interface DriveUsageSnapshot {
-  total: number;
-  used: number;
-  free: number;
+  total: number | null;
+  used: number | null;
+  free: number | null;
+  status: "available" | "unavailable";
 }
 
 export interface SessionRecord {
   id: string;
   startTime: string;
   endTime: string | null;
+  durationSeconds?: number;
   status: "in_progress" | "completed";
   drive: string;
   driveBefore: DriveUsageSnapshot;
   driveCurrent: DriveUsageSnapshot;
-  filesProcessed: number;
-  successful: number;
-  skipped: number;
-  failed: number;
-  originalBytes: number;
-  currentBytes: number;
-  spaceSavedBytes: number;
-  reductionPercent: number;
-  activeNode: string;
+  driveSpaceChangeBytes: number | null;
+  filesProcessed: number | null;
+  successful: number | null;
+  skipped: number | null;
+  failed: number | null;
+  activeNode?: string;
 }
 
 export interface DiscordLog {
@@ -115,7 +139,7 @@ export interface DiscordLog {
   type: string;
   title: string;
   status: string;
-  filesProcessed?: number;
+  filesProcessed?: number | null;
   spaceSavedStr?: string;
   reductionStr?: string;
   duration?: string;
@@ -124,6 +148,7 @@ export interface DiscordLog {
 export interface TardisSettings {
   tdarrUrl: string;
   autoSyncIntervalSec: number;
+  autoTrackingEnabled: boolean;
   discordWebhookUrl: string;
   discordNotifyOnComplete: boolean;
   discordNotifyOnError: boolean;
@@ -149,5 +174,7 @@ export interface TardisDatabaseState {
   connectionStatus: ConnectionStatusInfo;
   sessions: SessionRecord[];
   duplicates: DuplicateItem[];
+  scannedFiles: ScannedMediaFile[];
+  tdarrObservations: TdarrObservation[];
   discordLogs: DiscordLog[];
 }

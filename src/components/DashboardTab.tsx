@@ -16,7 +16,7 @@ import {
   Info
 } from "lucide-react";
 import { TardisDatabaseState, ViewTab } from "../types";
-import { formatBytes, formatPercent, formatDate } from "../utils";
+import { formatBytes, formatPercent, formatDate, formatDuration } from "../utils";
 
 interface DashboardTabProps {
   data: TardisDatabaseState;
@@ -338,29 +338,27 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-1">
                 <div>
                   <span className="text-slate-400 text-[11px] block">Files Processed:</span>
                   <span className="text-slate-100 font-semibold text-sm">
-                    {currentSession.filesProcessed.toLocaleString()}
+                    {currentSession.filesProcessed !== null
+                      ? currentSession.filesProcessed.toLocaleString()
+                      : "File count unavailable"}
                   </span>
                 </div>
                 <div>
-                  <span className="text-slate-400 text-[11px] block">Original Media:</span>
-                  <span className="text-slate-100 font-semibold text-sm">
-                    {formatBytes(currentSession.originalBytes, 1)}
+                  <span className="text-slate-400 text-[11px] block">Drive space change:</span>
+                  <span className={`font-semibold text-sm ${currentSession.driveSpaceChangeBytes && currentSession.driveSpaceChangeBytes > 0 ? "text-emerald-400" : "text-slate-200"}`}>
+                    {currentSession.driveSpaceChangeBytes !== null
+                      ? `${formatBytes(currentSession.driveSpaceChangeBytes, 2)}`
+                      : "Not available yet"}
                   </span>
                 </div>
                 <div>
-                  <span className="text-slate-400 text-[11px] block">Resulting Size:</span>
-                  <span className="text-slate-100 font-semibold text-sm">
-                    {formatBytes(currentSession.currentBytes, 1)}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-slate-400 text-[11px] block">Space Saved:</span>
-                  <span className="text-emerald-400 font-semibold text-sm">
-                    {formatBytes(currentSession.spaceSavedBytes, 1)} (-{currentSession.reductionPercent}%)
+                  <span className="text-slate-400 text-[11px] block">Duration:</span>
+                  <span className="text-slate-100 font-semibold text-sm font-mono">
+                    {formatDuration(currentSession.startTime, currentSession.endTime)}
                   </span>
                 </div>
               </div>
@@ -375,7 +373,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                   No Active Tracking Session
                 </div>
                 <p className="text-[11px] text-slate-400 max-w-md mx-auto leading-relaxed">
-                  TARDIS records exact before/after drive snapshots and file byte deltas so you can isolate transcoding storage reclamation from background downloads or operating system disk writes.
+                  TARDIS records verified before/after drive measurements and duration so you can isolate storage space change over time.
                 </p>
               </div>
               <button
@@ -407,8 +405,9 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
 
           <div className="space-y-4">
             {settings.monitoredDrives.map((drive) => {
-              const usedPct = Math.round((drive.usedBytes / drive.totalBytes) * 100);
-              const freePct = 100 - usedPct;
+              const hasData = drive.totalBytes !== null && drive.usedBytes !== null && drive.totalBytes > 0;
+              const usedPct = hasData ? Math.round(((drive.usedBytes as number) / (drive.totalBytes as number)) * 100) : null;
+              const freePct = usedPct !== null ? 100 - usedPct : null;
               return (
                 <div
                   key={drive.driveLetter}
@@ -421,32 +420,43 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                       </span>
                       <span className="text-xs font-semibold text-slate-200">{drive.label}</span>
                     </div>
-                    <span className="text-xs font-mono text-slate-400">{usedPct}% used</span>
-                  </div>
-
-                  <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
-                    <div
-                      className={`h-full rounded-full ${
-                        usedPct > 85 ? "bg-amber-500" : "bg-blue-500"
-                      }`}
-                      style={{ width: `${usedPct}%` }}
-                    />
-                  </div>
-
-                  <div className="flex justify-between text-[11px] font-mono text-slate-400 pt-0.5">
-                    <span>Used: {formatBytes(drive.usedBytes, 1)}</span>
-                    <span className="text-emerald-400 font-semibold">
-                      Free: {formatBytes(drive.freeBytes, 1)} ({freePct}%)
+                    <span className="text-xs font-mono text-slate-400">
+                      {hasData ? `${usedPct}% used` : "Not measured"}
                     </span>
                   </div>
+
+                  {hasData ? (
+                    <>
+                      <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
+                        <div
+                          className={`h-full rounded-full ${
+                            (usedPct || 0) > 85 ? "bg-amber-500" : "bg-blue-500"
+                          }`}
+                          style={{ width: `${usedPct}%` }}
+                        />
+                      </div>
+
+                      <div className="flex justify-between text-[11px] font-mono text-slate-400 pt-0.5">
+                        <span>Used: {formatBytes(drive.usedBytes, 1)}</span>
+                        <span className="text-emerald-400 font-semibold">
+                          Free: {formatBytes(drive.freeBytes, 1)} ({freePct}%)
+                        </span>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="text-[11px] text-slate-400 bg-slate-900/50 p-2 rounded border border-slate-800 flex items-center justify-between">
+                      <span>Status: {drive.error || "Not available yet"}</span>
+                      <span className="text-[10px] text-slate-400">Real OS call on Windows 11</span>
+                    </div>
+                  )}
                 </div>
               );
             })}
           </div>
 
           <div className="p-3 rounded-lg bg-slate-800/40 border border-slate-700/40 text-[11px] text-slate-400">
-            <span className="font-semibold text-slate-300">Deterministic Principle: </span>
-            TARDIS uses exact per-file byte deltas from Tdarr and cross-references Windows drive allocations to prevent unrelated disk churn from distorting transcode statistics.
+            <span className="font-semibold text-slate-300">Drive Space Principle: </span>
+            TARDIS measures real physical storage allocations directly from Windows file system APIs. When drives are offline or unmounted, statistics are labeled "Not available yet".
           </div>
         </div>
       </div>

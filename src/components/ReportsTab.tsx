@@ -56,9 +56,14 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({ data }) => {
     report += `2. MONITORED STORAGE DRIVES\n`;
     report += `------------------------------------------------------------------------\n`;
     settings.monitoredDrives.forEach((d) => {
-      const usedPct = Math.round((d.usedBytes / d.totalBytes) * 100);
+      const hasData = d.totalBytes !== null && d.usedBytes !== null && d.totalBytes > 0;
+      const usedPct = hasData ? Math.round(((d.usedBytes as number) / (d.totalBytes as number)) * 100) : null;
       report += `Drive ${d.driveLetter}\\ (${d.label}):\n`;
-      report += `  Capacity: ${formatBytes(d.totalBytes, 1)} | Used: ${formatBytes(d.usedBytes, 2)} (${usedPct}%) | Free: ${formatBytes(d.freeBytes, 2)}\n`;
+      if (hasData) {
+        report += `  Capacity: ${formatBytes(d.totalBytes, 1)} | Used: ${formatBytes(d.usedBytes, 2)} (${usedPct}%) | Free: ${formatBytes(d.freeBytes, 2)}\n`;
+      } else {
+        report += `  Status: Not available yet (Real OS measurement on Windows 11 host)\n`;
+      }
     });
     report += `\n`;
 
@@ -85,11 +90,9 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({ data }) => {
       sessions.forEach((s) => {
         report += `Session: ${s.id}\n`;
         report += `  Start: ${formatDate(s.startTime)} | End: ${formatDate(s.endTime)}\n`;
-        report += `  Drive: ${s.drive} | Files: ${s.filesProcessed} (Success: ${s.successful}, Skip: ${s.skipped}, Fail: ${s.failed})\n`;
-        report += `  Original: ${formatBytes(s.originalBytes, 1)} -> Result: ${formatBytes(s.currentBytes, 1)}\n`;
-        report += `  Saved: ${formatBytes(s.spaceSavedBytes, 1)} (-${s.reductionPercent}%)\n`;
-        report += `  Drive Before: Used ${formatBytes(s.driveBefore.used, 2)}, Free ${formatBytes(s.driveBefore.free, 2)}\n`;
-        report += `  Drive After:  Used ${formatBytes(s.driveCurrent.used, 2)}, Free ${formatBytes(s.driveCurrent.free, 2)}\n\n`;
+        report += `  Drive: ${s.drive} | Files Processed: ${s.filesProcessed !== null ? s.filesProcessed : "File count unavailable"}\n`;
+        report += `  Drive Start Free: ${formatBytes(s.driveStartFreeBytes, 2)} | End Free: ${formatBytes(s.driveEndFreeBytes, 2)}\n`;
+        report += `  Drive Space Change: ${s.driveSpaceChangeBytes !== null ? formatBytes(s.driveSpaceChangeBytes, 2) : "Not available yet"}\n\n`;
       });
     } else {
       report += `No active sessions logged in local SQLite archive yet.\n\n`;
@@ -126,7 +129,7 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({ data }) => {
             onClick={handleCopy}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-medium transition-all"
           >
-            {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+            {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-slate-400" />}
             <span>{copied ? "Copied Report" : "Copy Text Report"}</span>
           </button>
 
@@ -182,20 +185,24 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({ data }) => {
             <div className="p-3 rounded-lg bg-slate-950 border border-slate-800">
               <span className="text-slate-400 text-[11px] block">Original Volume:</span>
               <span className="text-slate-100 font-bold text-sm">
-                {formatBytes(historicalSync.totalOriginalSizeBytes, 2)}
+                {historicalSync.isLiveVerified && historicalSync.totalOriginalSizeBytes !== null
+                  ? formatBytes(historicalSync.totalOriginalSizeBytes, 2)
+                  : "--"}
               </span>
             </div>
             <div className="p-3 rounded-lg bg-slate-950 border border-slate-800">
               <span className="text-slate-400 text-[11px] block">Current Volume:</span>
               <span className="text-slate-100 font-bold text-sm">
-                {formatBytes(historicalSync.totalResultingSizeBytes, 2)}
+                {historicalSync.isLiveVerified && historicalSync.totalResultingSizeBytes !== null
+                  ? formatBytes(historicalSync.totalResultingSizeBytes, 2)
+                  : "--"}
               </span>
             </div>
             <div className="p-3 rounded-lg bg-slate-950 border border-slate-800">
               <span className="text-slate-400 text-[11px] block">Net Space Saved:</span>
               <span className="text-emerald-400 font-bold text-sm">
                 {historicalSync.isLiveVerified && historicalSync.totalSpaceSavedBytes !== null
-                  ? `${formatBytes(historicalSync.totalSpaceSavedBytes, 2)} (-${historicalSync.percentageReduction}%)`
+                  ? `${formatBytes(historicalSync.totalSpaceSavedBytes, 2)}`
                   : "--"}
               </span>
             </div>
@@ -208,19 +215,29 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({ data }) => {
             2. Hard Drive Utilization
           </h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 font-mono text-xs">
-            {settings.monitoredDrives.map((d) => (
-              <div key={d.driveLetter} className="p-3 rounded-lg bg-slate-950 border border-slate-800 space-y-1">
-                <div className="flex justify-between font-bold text-slate-200">
-                  <span>Drive {d.driveLetter}\ ({d.label})</span>
-                  <span>{Math.round((d.usedBytes / d.totalBytes) * 100)}% Used</span>
+            {settings.monitoredDrives.map((d) => {
+              const hasData = d.totalBytes !== null && d.usedBytes !== null && d.totalBytes > 0;
+              const usedPct = hasData ? Math.round(((d.usedBytes as number) / (d.totalBytes as number)) * 100) : null;
+              return (
+                <div key={d.driveLetter} className="p-3 rounded-lg bg-slate-950 border border-slate-800 space-y-1">
+                  <div className="flex justify-between font-bold text-slate-200">
+                    <span>Drive {d.driveLetter}\ ({d.label})</span>
+                    <span>{hasData ? `${usedPct}% Used` : "Not measured"}</span>
+                  </div>
+                  {hasData ? (
+                    <div className="text-[11px] text-slate-400 flex justify-between">
+                      <span>Used: {formatBytes(d.usedBytes, 2)}</span>
+                      <span className="text-emerald-400 font-semibold">Free: {formatBytes(d.freeBytes, 2)}</span>
+                      <span>Total: {formatBytes(d.totalBytes, 1)}</span>
+                    </div>
+                  ) : (
+                    <div className="text-[11px] text-slate-400">
+                      Status: {d.error || "Not available yet"}
+                    </div>
+                  )}
                 </div>
-                <div className="text-[11px] text-slate-400 flex justify-between">
-                  <span>Used: {formatBytes(d.usedBytes, 2)}</span>
-                  <span className="text-emerald-400 font-semibold">Free: {formatBytes(d.freeBytes, 2)}</span>
-                  <span>Total: {formatBytes(d.totalBytes, 1)}</span>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
 
