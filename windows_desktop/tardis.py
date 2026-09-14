@@ -544,15 +544,20 @@ class DuplicateScanner:
             return False, "File does not exist"
         try:
             if mode == "recycle_bin" and HAS_SEND2TRASH:
-                send2trash(filepath)
-                return True, "Moved file to Windows Recycle Bin"
-            else:
-                # Safe quarantine fallback if send2trash is unavailable or non-Windows
-                quarantine_dir = get_app_data_dir() / "quarantine_trash"
-                quarantine_dir.mkdir(parents=True, exist_ok=True)
-                dest = quarantine_dir / f"{int(datetime.utcnow().timestamp())}_{Path(filepath).name}"
-                shutil.move(filepath, str(dest))
-                return True, f"Moved to safe quarantine: {dest}"
+                try:
+                    send2trash(filepath)
+                    return True, "Moved file to Windows Recycle Bin"
+                except Exception as trash_err:
+                    # If Windows Recycle Bin or OS trash is unavailable (e.g. network share, non-supported volume, or test env),
+                    # fallback cleanly to safe quarantine rather than unhandled crash
+                    pass
+
+            # Safe quarantine fallback if send2trash is unavailable or failed
+            quarantine_dir = get_app_data_dir() / "quarantine_trash"
+            quarantine_dir.mkdir(parents=True, exist_ok=True)
+            dest = quarantine_dir / f"{int(datetime.utcnow().timestamp())}_{Path(filepath).name}"
+            shutil.move(filepath, str(dest))
+            return True, f"Moved to safe quarantine: {dest}"
         except Exception as e:
             return False, f"Failed to delete: {str(e)}"
 
