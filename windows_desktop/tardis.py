@@ -456,16 +456,353 @@ class TdarrClient:
             return {}
         return {}
 
-    def get_pie_stats(self) -> dict:
-        """Fetch statistics from /api/v2/stats/get-pies without fabrication."""
+    def get_libraries(self) -> list[dict]:
+        """Query Tdarr for configured media libraries and their actual library IDs.
+        Queries /api/v2/cruddb (LibrarySettingsJSONDB getAll) with fallback to /api/v2/get-libraries.
+        Strictly read-only; does not modify Tdarr.
+        """
+        libs = []
+        # Primary: /api/v2/cruddb with LibrarySettingsJSONDB
         try:
-            req = urllib.request.Request(f"{self.base_url}/api/v2/stats/get-pies", headers={"User-Agent": "TARDIS-Windows-Companion"})
+            req_data = json.dumps({
+                "data": {
+                    "collection": "LibrarySettingsJSONDB",
+                    "mode": "getAll",
+                    "docID": "",
+                    "obj": {}
+                }
+            }).encode('utf-8')
+            req = urllib.request.Request(
+                f"{self.base_url}/api/v2/cruddb",
+                data=req_data,
+                headers={"Content-Type": "application/json", "User-Agent": "TARDIS-Windows-Companion"}
+            )
             with urllib.request.urlopen(req, timeout=4) as resp:
                 if resp.status == 200:
-                    return json.loads(resp.read().decode('utf-8', errors='ignore'))
-        except Exception as e:
-            return {"error": str(e)}
-        return {}
+                    raw = json.loads(resp.read().decode('utf-8', errors='ignore'))
+                    items = raw.get("data", raw) if isinstance(raw, dict) else raw
+                    if isinstance(items, dict):
+                        items = list(items.values())
+                    if isinstance(items, list):
+                        for it in items:
+                            if isinstance(it, dict):
+                                lid = it.get("_id") or it.get("id") or it.get("libraryId")
+                                if lid:
+                                    libs.append({
+                                        "id": str(lid),
+                                        "name": str(it.get("name") or it.get("libraryName") or lid),
+                                        "folder": str(it.get("folder") or it.get("path") or it.get("folderPath") or ""),
+                                        "raw": it
+                                    })
+        except Exception:
+            pass
+
+        # Secondary: Fallback to /api/v2/get-libraries if cruddb yielded no libraries
+        if not libs:
+            for method in ("GET", "POST"):
+                try:
+                    kwargs = {"headers": {"User-Agent": "TARDIS-Windows-Companion"}}
+                    if method == "POST":
+                        kwargs["headers"]["Content-Type"] = "application/json"
+                        kwargs["data"] = json.dumps({}).encode('utf-8')
+                    req = urllib.request.Request(f"{self.base_url}/api/v2/get-libraries", **kwargs)
+                    with urllib.request.urlopen(req, timeout=4) as resp:
+                        if resp.status == 200:
+                            raw = json.loads(resp.read().decode('utf-8', errors='ignore'))
+                            items = raw.get("data", raw) if isinstance(raw, dict) else raw
+                            if isinstance(items, dict):
+                                items = list(items.values())
+                            if isinstance(items, list):
+                                for it in items:
+                                    if isinstance(it, dict):
+                                        lid = it.get("_id") or it.get("id") or it.get("libraryId")
+                                        if lid:
+                                            libs.append({
+                                                "id": str(lid),
+                                                "name": str(it.get("name") or it.get("libraryName") or lid),
+                                                "folder": str(it.get("folder") or it.get("path") or ""),
+                                                "raw": it
+                                            })
+                                if libs:
+                                    break
+                except Exception:
+                    pass
+
+        return libs
+
+    @staticmethod
+    def _extract_metric(obj: dict, candidate_keys: list[str]) -> int | None:
+        """Safely extract integer metric from a dictionary without fabricating numbers."""
+        if not isinstance(obj, dict):
+            return None
+        for k in candidate_keys:
+            if k in obj and obj[k] is not None:
+                val = obj[k]
+                if isinstance(val, (int, float)):
+                    return int(val)
+                if isinstance(val, str) and val.strip().isdigit():
+                    return int(val.strip())
+        return None
+
+    def get_pie_stats(self, library_id: str | None = None, library_ids: list[str] | None = None, target_libraries: list[str] | None = None) -> dict:
+        """Fetch statistics via POST to /api/v2/stats/get-pies for Tdarr 2.87.01+.
+        Requires POST with JSON payload containing libraryId.
+        Performs per-library queries and aggregates totals across relevant libraries.
+        Truthful reporting: returns 'Data unavailable' if unreachable, empty, or unparseable.
+        """
+        libs_to_query: list[dict] = []
+        if library_id:
+            libs_to_query = [{"id": str(library_id), "name": str(library_id), "folder": ""}]
+        elif library_ids:
+            libs_to_query = [{"id": str(lid), "name": str(lid), "folder": ""} for lid in library_ids if lid]
+        else:
+            server_libs = self.get_libraries()
+            if not server_libs:
+                return {
+                    "totalTranscodeCount": "Data unavailable",
+                    "table1Count": "Data unavailable",
+                    "table2Count": "Data unavailable",
+                    "table3Count": "Data unavailable",
+                    "table4Count": "Data unavailable",
+                    "totalSaved": 0,
+                    "libraries": [],
+                    "librariesQueried": 0,
+                    "librariesSucceeded": 0,
+                    "error": "No media libraries detected from Tdarr server."
+                }
+
+            if target_libraries:
+                matched = []
+                for sl in server_libs:
+                    sl_folder = os.path.normpath(sl.get("folder", "")).lower()
+                    sl_name = sl.get("name", "").lower()
+                    for tl in target_libraries:
+                        tl_norm = os.path.normpath(tl).lower()
+                        tl_base = os.path.basename(tl_norm)
+                        if sl_folder and (sl_folder == tl_norm or sl_folder.startswith(tl_norm) or tl_norm.startswith(sl_folder)):
+                            matched.append(sl)
+                            break
+                        elif sl_name and (sl_name == tl_base or sl_name in tl_norm):
+                            matched.append(sl)
+                            break
+                libs_to_query = matched if matched else server_libs
+            else:
+                libs_to_query = server_libs
+
+        if not libs_to_query:
+            return {
+                "totalTranscodeCount": "Data unavailable",
+                "table1Count": "Data unavailable",
+                "table2Count": "Data unavailable",
+                "table3Count": "Data unavailable",
+                "table4Count": "Data unavailable",
+                "totalSaved": 0,
+                "libraries": [],
+                "librariesQueried": 0,
+                "librariesSucceeded": 0
+            }
+
+        per_library_stats = []
+        sum_transcoded = 0
+        has_transcoded = False
+        sum_not_req = 0
+        has_not_req = False
+        sum_failed = 0
+        has_failed = False
+        sum_queued = 0
+        has_queued = False
+        sum_saved = 0
+        has_saved = False
+        succeeded_count = 0
+
+        for lib in libs_to_query:
+            lid = lib["id"]
+            try:
+                payload = json.dumps({
+                    "data": {"libraryId": lid},
+                    "libraryId": lid
+                }).encode('utf-8')
+                req = urllib.request.Request(
+                    f"{self.base_url}/api/v2/stats/get-pies",
+                    data=payload,
+                    headers={
+                        "Content-Type": "application/json",
+                        "User-Agent": "TARDIS-Windows-Companion"
+                    }
+                )
+                with urllib.request.urlopen(req, timeout=4) as resp:
+                    if resp.status == 200:
+                        raw = json.loads(resp.read().decode('utf-8', errors='ignore'))
+                        stats_obj = raw.get("data", raw) if isinstance(raw, dict) else {}
+                        succeeded_count += 1
+
+                        t_count = self._extract_metric(stats_obj, ["totalTranscodeCount", "table1Count", "totalTranscodes", "transcodeCount"])
+                        nr_count = self._extract_metric(stats_obj, ["table2Count", "totalNotRequired", "notRequiredCount"])
+                        f_count = self._extract_metric(stats_obj, ["table3Count", "totalFailed", "failedCount"])
+                        q_count = self._extract_metric(stats_obj, ["table4Count", "totalQueued", "queuedCount"])
+                        sv_bytes = self._extract_metric(stats_obj, ["totalSaved", "totalSpaceSavedBytes", "spaceSaved", "saved"])
+
+                        if t_count is not None:
+                            sum_transcoded += t_count
+                            has_transcoded = True
+                        if nr_count is not None:
+                            sum_not_req += nr_count
+                            has_not_req = True
+                        if f_count is not None:
+                            sum_failed += f_count
+                            has_failed = True
+                        if q_count is not None:
+                            sum_queued += q_count
+                            has_queued = True
+                        if sv_bytes is not None:
+                            sum_saved += sv_bytes
+                            has_saved = True
+
+                        per_library_stats.append({
+                            "libraryId": lid,
+                            "libraryName": lib.get("name", lid),
+                            "transcodeCount": t_count,
+                            "notRequiredCount": nr_count,
+                            "failedCount": f_count,
+                            "queuedCount": q_count,
+                            "spaceSaved": sv_bytes,
+                            "raw": stats_obj
+                        })
+                    else:
+                        per_library_stats.append({
+                            "libraryId": lid,
+                            "libraryName": lib.get("name", lid),
+                            "error": f"HTTP {resp.status}"
+                        })
+            except Exception as e:
+                per_library_stats.append({
+                    "libraryId": lid,
+                    "libraryName": lib.get("name", lid),
+                    "error": str(e)
+                })
+
+        if succeeded_count == 0:
+            return {
+                "error": "Could not retrieve statistics from Tdarr libraries.",
+                "totalTranscodeCount": "Data unavailable",
+                "table1Count": "Data unavailable",
+                "table2Count": "Data unavailable",
+                "table3Count": "Data unavailable",
+                "table4Count": "Data unavailable",
+                "totalSaved": 0,
+                "libraries": per_library_stats,
+                "librariesQueried": len(libs_to_query),
+                "librariesSucceeded": 0
+            }
+
+        return {
+            "totalTranscodeCount": sum_transcoded if has_transcoded else "Data unavailable",
+            "table1Count": sum_transcoded if has_transcoded else "Data unavailable",
+            "table2Count": sum_not_req if has_not_req else "Data unavailable",
+            "table3Count": sum_failed if has_failed else "Data unavailable",
+            "table4Count": sum_queued if has_queued else "Data unavailable",
+            "totalSaved": sum_saved if has_saved else 0,
+            "libraries": per_library_stats,
+            "librariesQueried": len(libs_to_query),
+            "librariesSucceeded": succeeded_count
+        }
+
+    @staticmethod
+    def parse_node_hardware_and_workers(node_info: dict) -> tuple[str, str]:
+        """Parse node hardware capabilities and worker activity truthfully without guessing CPU.
+        Returns (hardware_presentation, workers_presentation).
+        Never defaults to 'Standard/CPU'.
+        """
+        if not isinstance(node_info, dict):
+            return "Not reported", "0"
+
+        # 1. Hardware/GPU presentation
+        gpu_raw = node_info.get("gpu")
+        hw_type = node_info.get("hardwareType")
+        hw_gen = node_info.get("hardware")
+        gpus_list = node_info.get("gpus")
+
+        hardware_found = None
+        generic_terms = {"standard", "generic", "none", "unknown", "standard/cpu", "null", ""}
+
+        if isinstance(gpu_raw, str) and gpu_raw.strip() and gpu_raw.strip().lower() not in generic_terms:
+            hardware_found = gpu_raw.strip()
+        elif isinstance(gpu_raw, list) and gpu_raw:
+            names = [str(g.get("name", g) if isinstance(g, dict) else g) for g in gpu_raw]
+            hardware_found = ", ".join(names)
+        elif isinstance(gpu_raw, dict) and gpu_raw:
+            hardware_found = str(gpu_raw.get("name") or gpu_raw.get("model") or gpu_raw.get("gpu") or "")
+        elif isinstance(hw_type, str) and hw_type.strip() and hw_type.strip().lower() not in generic_terms:
+            hardware_found = hw_type.strip()
+        elif isinstance(hw_gen, str) and hw_gen.strip() and hw_gen.strip().lower() not in generic_terms:
+            hardware_found = hw_gen.strip()
+        elif isinstance(gpus_list, list) and gpus_list:
+            names = [str(g.get("name", g) if isinstance(g, dict) else g) for g in gpus_list]
+            hardware_found = ", ".join(names)
+
+        # 2. Worker breakdown & activity
+        raw_workers = node_info.get("workers", {})
+        workers_list = []
+        if isinstance(raw_workers, dict):
+            workers_list = list(raw_workers.values())
+        elif isinstance(raw_workers, list):
+            workers_list = raw_workers
+
+        total_workers = len(workers_list)
+        gpu_workers = 0
+        cpu_workers = 0
+        other_workers = 0
+
+        for w in workers_list:
+            if isinstance(w, dict):
+                wtype = str(w.get("workerType") or w.get("type") or w.get("worker_type") or "").strip().lower()
+                if any(tag in wtype for tag in ("gpu", "cuda", "nvenc", "vaapi", "qsv", "amf")):
+                    gpu_workers += 1
+                elif "cpu" in wtype:
+                    cpu_workers += 1
+                elif wtype:
+                    other_workers += 1
+
+        cfg_tg = node_info.get("transcodeGpuWorkers")
+        cfg_tc = node_info.get("transcodeCpuWorkers")
+        cfg_hg = node_info.get("healthcheckGpuWorkers")
+        cfg_hc = node_info.get("healthcheckCpuWorkers")
+
+        # Format workers presentation
+        if total_workers > 0:
+            parts = []
+            if gpu_workers > 0:
+                parts.append(f"{gpu_workers} GPU")
+            if cpu_workers > 0:
+                parts.append(f"{cpu_workers} CPU")
+            if other_workers > 0:
+                parts.append(f"{other_workers} other")
+            if parts:
+                workers_presentation = f"{total_workers} ({', '.join(parts)})"
+            else:
+                workers_presentation = f"{total_workers} (Type not reported)"
+        elif any(c is not None for c in (cfg_tg, cfg_tc, cfg_hg, cfg_hc)):
+            cfg_parts = []
+            if cfg_tg: cfg_parts.append(f"{cfg_tg} GPU transcode")
+            if cfg_tc: cfg_parts.append(f"{cfg_tc} CPU transcode")
+            if cfg_hg: cfg_parts.append(f"{cfg_hg} GPU health")
+            if cfg_hc: cfg_parts.append(f"{cfg_hc} CPU health")
+            workers_presentation = f"0 (Configured: {', '.join(cfg_parts)})" if cfg_parts else "0 (Idle)"
+        else:
+            workers_presentation = "0"
+
+        # Format hardware presentation (truthful; never guesses CPU)
+        if hardware_found:
+            hardware_presentation = hardware_found
+        else:
+            if gpu_workers > 0:
+                hardware_presentation = f"Not reported ({gpu_workers} GPU worker active)" if gpu_workers == 1 else f"Not reported ({gpu_workers} GPU workers active)"
+            elif cfg_tg and int(cfg_tg) > 0:
+                hardware_presentation = f"Not reported ({cfg_tg} GPU worker limit)"
+            else:
+                hardware_presentation = "Not reported"
+
+        return hardware_presentation, workers_presentation
 
 
 MEDIA_EXTENSIONS = {".mkv", ".mp4", ".avi", ".m4v", ".mov", ".ts", ".m2ts", ".wmv", ".flv"}
@@ -1167,14 +1504,15 @@ if HAS_PYSIDE:
     class TdarrProbeWorker(QThread):
         finished = Signal(dict)
 
-        def __init__(self, client: TdarrClient):
+        def __init__(self, client: TdarrClient, target_libraries: list[str] | None = None):
             super().__init__()
             self.client = client
+            self.target_libraries = target_libraries or []
 
         def run(self):
             ok, msg, status_data = self.client.test_connection(self.client.base_url)
             nodes = self.client.get_nodes() if ok else {}
-            pies = self.client.get_pie_stats() if ok else {}
+            pies = self.client.get_pie_stats(target_libraries=self.target_libraries) if ok else {}
             self.finished.emit({
                 "ok": ok,
                 "message": msg,
@@ -1676,7 +2014,7 @@ if HAS_PYSIDE:
             if self.probe_worker and self.probe_worker.isRunning():
                 return
 
-            self.probe_worker = TdarrProbeWorker(self.tdarr)
+            self.probe_worker = TdarrProbeWorker(self.tdarr, target_libraries=self.db.get_libraries())
             self.probe_worker.finished.connect(self.on_tdarr_probe_finished)
             self.probe_worker.start()
 
@@ -1700,14 +2038,13 @@ if HAS_PYSIDE:
                         self.table_nodes.insertRow(row)
                         name = node_info.get("nodeName", node_id)
                         ip = node_info.get("ip", node_info.get("nodeIp", "Unknown"))
-                        workers = len(node_info.get("workers", {}))
-                        gpu = node_info.get("gpu", node_info.get("hardwareType", "Standard/CPU"))
+                        hw_disp, workers_disp = TdarrClient.parse_node_hardware_and_workers(node_info)
                         state = "Online" if node_info.get("status") != "offline" else "Offline"
 
                         self.table_nodes.setItem(row, 0, QTableWidgetItem(str(name)))
                         self.table_nodes.setItem(row, 1, QTableWidgetItem(str(ip)))
-                        self.table_nodes.setItem(row, 2, QTableWidgetItem(str(workers)))
-                        self.table_nodes.setItem(row, 3, QTableWidgetItem(str(gpu)))
+                        self.table_nodes.setItem(row, 2, QTableWidgetItem(str(workers_disp)))
+                        self.table_nodes.setItem(row, 3, QTableWidgetItem(str(hw_disp)))
                         self.table_nodes.setItem(row, 4, QTableWidgetItem(state))
                         row += 1
                 else:
@@ -2576,10 +2913,153 @@ def run_cli_tests() -> bool:
     print(f"       ✔ Successfully persisted {len(loaded_libs)} arbitrary media libraries.")
 
     # 7. Test Tdarr Connection Validation (Truthful probe)
-    print("[7/14] Testing Tdarr Connection Probe (Truthful Failure on Unreachable Port)...")
+    print("[7/14] Testing Tdarr Connection Probe & API Integration...")
     ok, msg, _ = TdarrClient.test_connection("http://127.0.0.1:9999")
     assert not ok, "Connection to unreachable port 9999 should not claim success"
-    print(f"       ✔ Truthful refusal: {msg}")
+    print(f"       ✔ Truthful refusal on unreachable port: {msg}")
+
+    # 7a. Test Node Hardware & Worker Truthful Presentation (Never guessing Standard/CPU)
+    print("       Testing Node Hardware Presentation & Worker Types...")
+    # Case 1: Real GPU reported
+    hw1, w1 = TdarrClient.parse_node_hardware_and_workers({
+        "nodeName": "Node-GPU-1",
+        "gpu": "NVIDIA GeForce RTX 4090",
+        "workers": {"w1": {"workerType": "Transcode GPU"}}
+    })
+    assert hw1 == "NVIDIA GeForce RTX 4090", f"Expected NVIDIA GPU, got {hw1}"
+    assert "1 GPU" in w1, f"Expected 1 GPU worker, got {w1}"
+
+    # Case 2: No GPU property reported, but GPU workers active
+    hw2, w2 = TdarrClient.parse_node_hardware_and_workers({
+        "nodeName": "Node-GPU-Hidden",
+        "hardwareType": "Standard",
+        "workers": {
+            "w1": {"workerType": "Transcode GPU"},
+            "w2": {"workerType": "Transcode GPU"}
+        }
+    })
+    assert "Standard/CPU" not in hw2, f"Must not guess Standard/CPU: got {hw2}"
+    assert "Not reported" in hw2 and "2 GPU worker" in hw2, f"Expected Not reported with GPU worker note, got {hw2}"
+    assert "2 GPU" in w2, f"Expected 2 GPU workers, got {w2}"
+
+    # Case 3: No GPU property reported, configured GPU worker limit
+    hw3, w3 = TdarrClient.parse_node_hardware_and_workers({
+        "nodeName": "Node-Idle-Configured",
+        "transcodeGpuWorkers": 2,
+        "workers": {}
+    })
+    assert "Standard/CPU" not in hw3, f"Must not guess Standard/CPU: got {hw3}"
+    assert "Not reported" in hw3 and "2 GPU worker limit" in hw3, f"Expected GPU worker limit note, got {hw3}"
+    assert "2 GPU transcode" in w3, f"Expected configured workers note, got {w3}"
+
+    # Case 4: Totally generic/empty node info
+    hw4, w4 = TdarrClient.parse_node_hardware_and_workers({"nodeName": "Node-Generic"})
+    assert hw4 == "Not reported", f"Expected Not reported, got {hw4}"
+    assert w4 == "0", f"Expected 0 workers, got {w4}"
+    print("       ✔ Node hardware accurately reported without inferring CPU.")
+
+    # 7b. Test Live POST to /api/v2/stats/get-pies with Library ID
+    print("       Testing POST /api/v2/stats/get-pies telemetry integration with mock Tdarr server...")
+    from http.server import HTTPServer, BaseHTTPRequestHandler
+    import threading
+
+    captured_requests = []
+    class MockTdarrHandler(BaseHTTPRequestHandler):
+        def do_POST(self):
+            content_len = int(self.headers.get('Content-Length', 0))
+            post_body = self.rfile.read(content_len).decode('utf-8')
+            captured_requests.append({
+                "path": self.path,
+                "headers": {k.lower(): v for k, v in self.headers.items()},
+                "body": json.loads(post_body) if post_body else {}
+            })
+            if self.path == "/api/v2/cruddb":
+                resp = {
+                    "data": [
+                        {"_id": "lib_movies_01", "name": "Movies", "folder": "/media/movies"},
+                        {"_id": "lib_tv_02", "name": "TV Shows", "folder": "/media/tv"}
+                    ]
+                }
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(json.dumps(resp).encode('utf-8'))
+            elif self.path == "/api/v2/stats/get-pies":
+                body_json = json.loads(post_body)
+                lib_id = body_json.get("data", {}).get("libraryId") or body_json.get("libraryId")
+                if lib_id == "lib_movies_01":
+                    resp = {
+                        "data": {
+                            "totalTranscodeCount": 142,
+                            "table2Count": 50,
+                            "table3Count": 3,
+                            "table4Count": 12,
+                            "totalSaved": 107374182400
+                        }
+                    }
+                else:
+                    resp = {
+                        "data": {
+                            "totalTranscodeCount": 88,
+                            "table2Count": 20,
+                            "table3Count": 1,
+                            "table4Count": 5,
+                            "totalSaved": 53687091200
+                        }
+                    }
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(json.dumps(resp).encode('utf-8'))
+            else:
+                self.send_response(404)
+                self.end_headers()
+
+        def log_message(self, format, *args):
+            pass
+
+    mock_server = HTTPServer(('127.0.0.1', 0), MockTdarrHandler)
+    port = mock_server.server_port
+    server_thread = threading.Thread(target=mock_server.serve_forever, daemon=True)
+    server_thread.start()
+
+    try:
+        mock_client = TdarrClient(base_url=f"http://127.0.0.1:{port}")
+        # Test library discovery
+        libs = mock_client.get_libraries()
+        assert len(libs) == 2, f"Expected 2 libraries, got {len(libs)}"
+        assert libs[0]["id"] == "lib_movies_01"
+
+        # Test POST get-pies aggregation across libraries
+        pie_stats = mock_client.get_pie_stats()
+        assert pie_stats["totalTranscodeCount"] == 230, f"Expected 230 (142+88), got {pie_stats['totalTranscodeCount']}"
+        assert pie_stats["table2Count"] == 70, f"Expected 70 (50+20), got {pie_stats['table2Count']}"
+        assert pie_stats["table3Count"] == 4, f"Expected 4 (3+1), got {pie_stats['table3Count']}"
+        assert pie_stats["table4Count"] == 17, f"Expected 17 (12+5), got {pie_stats['table4Count']}"
+        assert pie_stats["librariesSucceeded"] == 2
+
+        # Verify POST request details
+        get_pie_reqs = [r for r in captured_requests if r["path"] == "/api/v2/stats/get-pies"]
+        assert len(get_pie_reqs) == 2, f"Expected 2 POST requests to get-pies, got {len(get_pie_reqs)}"
+        for req in get_pie_reqs:
+            assert req["headers"].get("content-type") == "application/json"
+            assert "libraryId" in req["body"].get("data", {})
+        print("       ✔ Verified POST requests to /api/v2/stats/get-pies with Content-Type: application/json and libraryId payload.")
+
+        # Test Single Library query
+        single_lib_stats = mock_client.get_pie_stats(library_id="lib_movies_01")
+        assert single_lib_stats["totalTranscodeCount"] == 142
+        print("       ✔ Verified single library POST query.")
+
+        # Test Unreachable returns truthful Data unavailable
+        unreach_client = TdarrClient(base_url="http://127.0.0.1:9999")
+        unreach_stats = unreach_client.get_pie_stats()
+        assert unreach_stats["totalTranscodeCount"] == "Data unavailable"
+        assert unreach_stats["table2Count"] == "Data unavailable"
+        print("       ✔ Truthful reporting: Returns 'Data unavailable' when Tdarr unreachable.")
+    finally:
+        mock_server.shutdown()
+        mock_server.server_close()
 
     # 8. Test Discord Webhook Validation
     print("[8/14] Testing Discord Webhook Validation...")

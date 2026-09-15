@@ -437,31 +437,124 @@ app.post("/api/tdarr/sync", async (req, res) => {
       throw new Error(`Tdarr returned status ${statusResp ? statusResp.status : "unreachable"}`);
     }
 
-    // Nodes probe
+    // Nodes probe (Truthful hardware reporting without inferring CPU)
     let liveNodes: any[] = [];
     try {
       const nodesResp = await fetch(`${target}/api/v2/get-nodes`, { method: "GET" });
       if (nodesResp.ok) {
         const nodesObj = await nodesResp.json();
-        liveNodes = Object.entries(nodesObj || {}).map(([key, val]: [string, any]) => ({
-          name: val?.nodeName || key,
-          ip: val?.nodeIP || "127.0.0.1",
-          activeWorkers: val?.workers ? Object.keys(val.workers).length : 0,
-          gpu: val?.gpu || "CPU / QSV",
-          fps: val?.fps || 0,
-          status: val?.status || "Active"
-        }));
+        liveNodes = Object.entries(nodesObj || {}).map(([key, val]: [string, any]) => {
+          let gpuLabel = "Not reported";
+          const generic = ["standard", "generic", "none", "unknown", "standard/cpu", "cpu / qsv"];
+          if (val?.gpu && typeof val.gpu === "string" && !generic.includes(val.gpu.trim().toLowerCase())) {
+            gpuLabel = val.gpu.trim();
+          } else if (val?.hardwareType && typeof val.hardwareType === "string" && !generic.includes(val.hardwareType.trim().toLowerCase())) {
+            gpuLabel = val.hardwareType.trim();
+          } else {
+            const workersList = val?.workers ? (Array.isArray(val.workers) ? val.workers : Object.values(val.workers)) : [];
+            const hasGpuWorker = workersList.some((w: any) => {
+              const t = String(w?.workerType || w?.type || "").toLowerCase();
+              return t.includes("gpu") || t.includes("cuda") || t.includes("nvenc") || t.includes("vaapi");
+            });
+            if (hasGpuWorker || Number(val?.transcodeGpuWorkers) > 0) {
+              gpuLabel = "Not reported (GPU workers active)";
+            } else {
+              gpuLabel = "Not reported";
+            }
+          }
+
+          return {
+            name: val?.nodeName || key,
+            ip: val?.nodeIP || val?.ip || "Unknown",
+            activeWorkers: val?.workers ? (Array.isArray(val.workers) ? val.workers.length : Object.keys(val.workers).length) : 0,
+            gpu: gpuLabel,
+            fps: val?.fps || 0,
+            status: val?.status || "Active"
+          };
+        });
       }
     } catch (e) {
       // ignore
     }
 
-    // Pie stats probe
+    // Pie stats probe: POST /api/v2/stats/get-pies with libraryId
     let pieStats: any = null;
     try {
-      const pieResp = await fetch(`${target}/api/v2/stats/get-pies`, { method: "GET" });
-      if (pieResp.ok) {
-        pieStats = await pieResp.json();
+      // 1. Fetch libraries from Tdarr
+      let libIds: string[] = [];
+      try {
+        const crudResp = await fetch(`${target}/api/v2/cruddb`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            data: { collection: "LibrarySettingsJSONDB", mode: "getAll", docID: "", obj: {} }
+          })
+        });
+        if (crudResp.ok) {
+          const crudData = await crudResp.json();
+          const items = Array.isArray(crudData?.data) ? crudData.data : (Array.isArray(crudData) ? crudData : Object.values(crudData?.data || {}));
+          libIds = items.map((it: any) => it?._id || it?.id || it?.libraryId).filter(Boolean);
+        }
+      } catch (e) {
+        // ignore
+      }
+
+      if (libIds.length === 0) {
+        try {
+          const libResp = await fetch(`${target}/api/v2/get-libraries`, { method: "GET" });
+          if (libResp.ok) {
+            const libsData = await libResp.json();
+            const items = Array.isArray(libsData?.data) ? libsData.data : (Array.isArray(libsData) ? libsData : Object.values(libsData || {}));
+            libIds = items.map((it: any) => it?._id || it?.id || it?.libraryId).filter(Boolean);
+          }
+        } catch (e) {
+          // ignore
+        }
+      }
+
+      // 2. For each library, POST to /api/v2/stats/get-pies
+      if (libIds.length > 0) {
+        let sumTranscoded = 0;
+        let sumNotReq = 0;
+        let sumFailed = 0;
+        let sumQueued = 0;
+        let sumSaved = 0;
+        let hasData = false;
+
+        for (const lid of libIds) {
+          try {
+            const pResp = await fetch(`${target}/api/v2/stats/get-pies`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ data: { libraryId: lid }, libraryId: lid })
+            });
+            if (pResp.ok) {
+              const pData = await pResp.json();
+              const s = pData?.data || pData;
+              if (s) {
+                hasData = true;
+                sumTranscoded += Number(s.totalTranscodeCount || s.table1Count || 0);
+                sumNotReq += Number(s.table2Count || s.totalNotRequired || 0);
+                sumFailed += Number(s.table3Count || s.totalFailed || 0);
+                sumQueued += Number(s.table4Count || s.totalQueued || 0);
+                sumSaved += Number(s.totalSaved || s.totalSpaceSavedBytes || 0);
+              }
+            }
+          } catch (e) {
+            // ignore
+          }
+        }
+
+        if (hasData) {
+          pieStats = {
+            totalTranscodeCount: sumTranscoded,
+            table1Count: sumTranscoded,
+            table2Count: sumNotReq,
+            table3Count: sumFailed,
+            table4Count: sumQueued,
+            totalSaved: sumSaved
+          };
+        }
       }
     } catch (e) {
       // ignore
